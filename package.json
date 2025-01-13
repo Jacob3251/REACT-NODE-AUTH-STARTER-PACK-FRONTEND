@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "TSC_COMPILE_ON_ERROR=true react-scripts build",
+    "build": "npx vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
