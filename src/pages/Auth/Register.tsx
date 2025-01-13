@@ -24,6 +24,10 @@ import { Input } from "@/components/ui/input";
 import AuthLayout from "@/layouts/AuthLayout";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { PostAxiosWithFile } from "@/shared/utils/customAxios";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import { useAuthStore } from "@/store/auth-store";
 
 const fileTypes = ["image/png", "image/jpeg"]; // defining accepting file types
 
@@ -43,9 +47,9 @@ const formSchema = z
       lastName: z.string().min(2),
     }),
     bio: z.string().optional(),
+    contactNumber: z.string().optional(),
     photo: z
       .instanceof(FileList)
-      .optional()
       .refine((files) => files?.length === 1, {
         message: "Please upload exactly one file",
       })
@@ -55,9 +59,14 @@ const formSchema = z
         {
           message: "Please add png or jpg files.",
         }
-      ),
+      )
+      .refine((files) => files?.[0] && fileTypes.includes(files[0].type), {
+        message: "Please add png or jpg files.",
+      })
+      .optional(),
     pronoun: z.string().optional(),
-    gender: z.enum(["male", "female", "other"]).optional(),
+    gender: z.enum(["MALE", "FEMALE", "OTHER"]).optional(),
+    userType: z.enum(["VIEWER", "CREATOR"]).optional(),
     age: z.coerce.number().min(18).max(35),
     status: z.enum(["active", "inactive", "invisible"]),
     checked: z.boolean(),
@@ -68,21 +77,29 @@ const formSchema = z
   });
 
 function Register() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+
+  if (isLoggedIn) {
+    window.history.back();
+  }
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       photo: undefined,
       checked: false,
-
       email: "",
       password: "",
       confirm_password: "",
+      contactNumber: "",
       pronoun: "",
       name: {
         firstName: "",
         lastName: "",
       },
       status: "active",
+      userType: "VIEWER",
       age: 25,
       bio: "",
     },
@@ -94,13 +111,14 @@ function Register() {
   const emailW = form.watch("email");
   const passW = form.watch("password");
   const confirm_passW = form.watch("confirm_password");
+  const checkedW = form.watch("checked");
   const [disabledCheck, setDisabledCheck] = React.useState(true);
   React.useEffect(() => {
     if (
-      fnameW !== "" ||
-      lnameW !== "" ||
-      emailW !== "" ||
-      passW !== "" ||
+      fnameW !== "" &&
+      lnameW !== "" &&
+      emailW !== "" &&
+      passW !== "" &&
       confirm_passW !== ""
     ) {
       setDisabledCheck(false);
@@ -108,19 +126,90 @@ function Register() {
       setDisabledCheck(true);
     }
   }, [fnameW, lnameW, ageW, emailW, passW, confirm_passW]);
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    try {
-      console.log("Form submitted successfully:", values);
-      // Here you would typically send the data to your backend
-    } catch (error) {
-      console.error("Error submitting form:", error);
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    console.log(values);
+
+    const formData = new FormData();
+
+    if (values.name.firstName) {
+      formData.append("firstName", values.name.firstName);
     }
-  }
+    if (values.name.lastName) {
+      formData.append("lastName", values.name.lastName);
+    }
+    if (values.age) {
+      formData.append("age", values.age.toString());
+    }
+    if (values.bio) {
+      formData.append("bio", values.bio);
+    }
+    if (values.gender) {
+      formData.append("gender", values.gender);
+    }
+    if (values.userType) {
+      formData.append("userType", values.userType);
+    }
+    if (values.contactNumber) {
+      formData.append("contactNumber", values.contactNumber);
+    }
+    if (values.email) {
+      formData.append("email", values.email);
+    }
+    if (values.password) {
+      formData.append("password", values.password);
+    }
+
+    if (values.photo && values.photo[0]) {
+      formData.append("file", values.photo[0]); // Assuming the file is being added properly.
+    }
+
+    if (values.pronoun) {
+      formData.append("pronoun", values.pronoun);
+    }
+    try {
+      const { data } = await PostAxiosWithFile(
+        "https://azureauthvideo-bdagfxe2ekdpaqgj.uksouth-01.azurewebsites.net/api/v1/user/create",
+        formData
+      );
+
+      if (data) {
+        toast({
+          variant: "default",
+          title: "User Registration Successful!",
+          description:
+            "You have been successfully registered. Please look into your provided email for further instructions.",
+        });
+
+        console.log(data.data.id);
+        setTimeout(() => {
+          navigate(`/auth/${data.data.id}/otp-verification`);
+        }, 1500);
+      }
+
+      // Here you would typically send the data to your backend
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "User Registration unsuccessful!",
+        description: error.message,
+      });
+    }
+  };
   // console.log(form.formState.errors);
   return (
     <AuthLayout>
       <div className="h-[85vh] w-full max-w-md overflow-hidden flex flex-col bg-white bg-opacity-35 p-8 rounded-md border-2 border-slate-200">
-        <h2 className="mb-5 font-pacifico text-3xl">Sign Up</h2>
+        <div className="flex justify-between items-center">
+          <h6 className="mb-5 font-pacifico text-3xl text-center">Sign Up</h6>
+          <button
+            className="font-pacifico text-2xl font-bold"
+            onClick={() => {
+              navigate("/auth/login");
+            }}
+          >
+            Login!
+          </button>
+        </div>
 
         <Form {...form}>
           <form
@@ -158,52 +247,59 @@ function Register() {
               />
             </div>
             <div className="flex space-x-3">
-              {/* Age */}
-              <FormField
-                control={form.control}
-                name="age"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Age</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="18"
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {/* Gender */}
-              <FormField
-                control={form.control}
-                name="gender"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Gender</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      defaultValue={field.value}
-                    >
+              <div className="w-full">
+                {/* Age */}
+                <FormField
+                  control={form.control}
+                  name="age"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Age</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a verified email to display" />
-                        </SelectTrigger>
+                        <Input
+                          placeholder="18"
+                          className="w-full"
+                          type="number"
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(e.target.valueAsNumber)
+                          }
+                        />
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="male">Male</SelectItem>
-                        <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="w-full">
+                {/* Gender */}
+                <FormField
+                  control={form.control}
+                  name="gender"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Gender</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a gender" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="MALE">Male</SelectItem>
+                          <SelectItem value="FEMALE">Female</SelectItem>
+                          <SelectItem value="OTHER">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
             {/* Pronoun */}
             <FormField
@@ -222,6 +318,33 @@ function Register() {
                 </FormItem>
               )}
             />{" "}
+            {/* userType */}
+            <FormField
+              control={form.control}
+              name="userType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>User Type</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    defaultValue={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="CREATOR">CREATOR</SelectItem>
+                      <SelectItem value="VIEWER">VIEWER</SelectItem>
+                      {/* <SelectItem value="OTHER">Other</SelectItem> */}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             {/* photo */}
             <FormField
               control={form.control}
@@ -234,6 +357,19 @@ function Register() {
                       type="file"
                       onChange={(e) => field.onChange(e.target.files)}
                     />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="contactNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Contact Number</FormLabel>
+                  <FormControl>
+                    <Input placeholder="+8801754XXXXXX" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -261,7 +397,7 @@ function Register() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input placeholder="******" {...field} />
+                    <Input type="password" placeholder="******" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -275,7 +411,7 @@ function Register() {
                 <FormItem>
                   <FormLabel>Confirm Password</FormLabel>
                   <FormControl>
-                    <Input placeholder="******" {...field} />
+                    <Input type="password" placeholder="******" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -298,10 +434,12 @@ function Register() {
             <FormField
               control={form.control}
               name="checked"
-              render={() => (
+              render={({ field }) => (
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     {...form.register("checked")}
+                    checked={field.value}
+                    onCheckedChange={(value) => field.onChange(value)}
                     disabled={disabledCheck}
                   />
                   <label
@@ -313,7 +451,9 @@ function Register() {
                 </div>
               )}
             />
-            <Button type="submit">Submit</Button>
+            <Button disabled={checkedW === false ? true : false} type="submit">
+              Submit
+            </Button>
           </form>
         </Form>
       </div>

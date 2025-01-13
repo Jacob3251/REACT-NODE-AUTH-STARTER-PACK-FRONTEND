@@ -5,9 +5,14 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import ErrorLabel from "@/components/ErrorLabel";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuthStore } from "@/store/auth-store";
 
 function Login() {
+  const login = useAuthStore((state) => state.login);
+  const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+  const navigate = useNavigate();
+  const location = useLocation();
   const LoginSchema = z.object({
     email: z.string().email(),
     password: z
@@ -25,15 +30,30 @@ function Login() {
   });
   type LoginData = z.infer<typeof LoginSchema>;
 
-  const onSubmit = (data: LoginData) => {
+  if (isLoggedIn) {
+    window.history.back();
+  }
+
+  const onSubmit = async (data: LoginData) => {
     console.log(data);
+
+    try {
+      await login(data.email, data.password);
+
+      const redirectTo = location.state?.from?.pathname === "" || "/";
+      navigate(redirectTo as string, { replace: true });
+      alert("Login successful!");
+    } catch (error: unknown) {
+      alert("Failed to log in. Check your email or password.");
+      console.dir(error)
+    }
   };
 
   return (
     <AuthLayout>
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="w-[80%] md:w-[300px] h-[80vh] md:h-auto bg-white bg-opacity-35 p-5 rounded-md border-2 border-slate-200 text-lg"
+        className="w-full max-w-md bg-white bg-opacity-35 p-5 rounded-md border-2 border-slate-200 text-lg"
       >
         <h2 className="font-pacifico text-center text-3xl">Sign In</h2>
         <div className="mt-5">
@@ -58,6 +78,12 @@ function Login() {
         {errors.password && (
           <ErrorLabel>{errors.password?.message as string}</ErrorLabel>
         )}
+        <Link
+          to="/auth/recovery-mail-request"
+          className="mt-2 text-xs hover:underline"
+        >
+          Forgot Password
+        </Link>
         <div className="mt-2">
           <Button type="submit" className="w-full capitalize">
             Sign in
